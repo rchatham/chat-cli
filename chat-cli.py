@@ -79,12 +79,14 @@ def start_chat(model, custom_message, temperature, top_p, n, stream, stop, max_t
             response = openai.ChatCompletion.create(**params)
             click.echo(click.style("Assistant:", fg='yellow', bold=True))
 
-            # prev_char = None
+            assistant_response = ""
             for chunk in response:
                 chunk_text = chunk["choices"][0].get("delta", {}).get("content", "")
                 if chunk_text:
+                    assistant_response += chunk_text
                     click.echo(click.style(f"{chunk_text}", fg='yellow'), nl=False)
 
+            messages.append({"role": "assistant", "content": assistant_response.strip()})
             click.echo("")  # Add a newline at the end
 
         except (KeyboardInterrupt, EOFError):
