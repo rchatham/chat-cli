@@ -53,7 +53,7 @@ def start_chat(model, custom_message, temperature, top_p, n, stream, stop, max_t
                frequency_penalty, logit_bias, user):
     click.echo(click.style(custom_message, fg='yellow', bold=True))
 
-    messages = []
+    messages = [{"role": "system", "content": custom_message}]
 
     while True:
         try:
