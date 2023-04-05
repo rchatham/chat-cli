@@ -4,6 +4,7 @@ import json
 import configparser
 import os
 
+
 config_file = 'config.ini'
 
 
@@ -27,18 +28,55 @@ def write_api_key(api_key):
         config.write(f)
 
 
-OPENAI_API_KEY = read_api_key()
+def prepare_api_key():
+    api_key = read_api_key()
 
-if not OPENAI_API_KEY:
-    print("API key not found. Please enter your OpenAI API key.")
-    OPENAI_API_KEY = input("API key: ").strip()
-    write_api_key(OPENAI_API_KEY)
+    if not api_key:
+        print("API key not found. Please enter your OpenAI API key.")
+        api_key = input("API key: ").strip()
+        write_api_key(api_key)
 
-openai.api_key = OPENAI_API_KEY
+    openai.api_key = api_key
+
+
+def get_user_input():
+    try:
+        return click.prompt(click.style("You", fg='green', bold=True))
+    except click.exceptions.Abort:
+        raise KeyboardInterrupt
+
+
+def create_chat_params(model, messages, options):
+    params = {
+        "model": model,
+        "messages": messages,
+    }
+
+    for key, value in options.items():
+        if value is not None:
+            params[key] = value
+
+    return params
+
+
+
+def print_assistant_response(response):
+    click.echo(click.style("Assistant:", fg='yellow', bold=True))
+
+    assistant_response = ""
+    for chunk in response:
+        chunk_text = chunk["choices"][0].get("delta", {}).get("content", "")
+        if chunk_text:
+            assistant_response += chunk_text
+            click.echo(click.style(f"{chunk_text}", fg='yellow'), nl=False)
+
+    click.echo("")  # Add a newline at the end
+    return assistant_response.strip()
+
 
 @click.command()
 @click.option("--model", default="gpt-4", help="The model to use.")
-@click.option("--custom_message", default="You are a cli chat bot using OpenAI's API.", help="A custom system message.")
+@click.option("--system_message", default="You are a cli chat bot using OpenAI's API.", help="A custom system message.")
 @click.option("--temperature", default=None, type=float, help="The sampling temperature.")
 @click.option("--top_p", default=None, type=float, help="The nucleus sampling value.")
 @click.option("--n", default=None, type=int, help="The number of chat completion choices.")
@@ -49,45 +87,36 @@ openai.api_key = OPENAI_API_KEY
 @click.option("--frequency_penalty", default=None, type=float, help="The frequency penalty.")
 @click.option("--logit_bias", default=None, type=str, help="The logit bias as a JSON string.")
 @click.option("--user", default=None, type=str, help="A unique identifier for the end-user.")
-def start_chat(model, custom_message, temperature, top_p, n, stream, stop, max_tokens, presence_penalty,
+def start_chat(model, system_message, temperature, top_p, n, stream, stop, max_tokens, presence_penalty,
                frequency_penalty, logit_bias, user):
-    click.echo(click.style(custom_message, fg='yellow', bold=True))
+    click.echo(click.style(f"System: {system_message}", fg='yellow', bold=True))
 
-    messages = [{"role": "system", "content": custom_message}]
+    messages = [{"role": "system", "content": system_message}]
+
+    options = {
+        "temperature": temperature,
+        "top_p": top_p,
+        "n": n,
+        "stream": stream,
+        "stop": stop,
+        "max_tokens": max_tokens,
+        "presence_penalty": presence_penalty,
+        "frequency_penalty": frequency_penalty,
+        "logit_bias": json.loads(logit_bias) if logit_bias else None,
+        "user": user
+    }
 
     while True:
         try:
-            user_input = click.prompt(click.style("You", fg='green', bold=True))
+            user_input = get_user_input()
             messages.append({"role": "user", "content": user_input})
 
-            params = {
-                "model": model,
-                "messages": messages,
-            }
-
-            if temperature: params["temperature"] = temperature
-            if top_p: params["top_p"] = top_p
-            if n: params["n"] = n
-            if stream: params["stream"] = stream
-            if stop: params["stop"] = stop
-            if max_tokens: params["max_tokens"] = max_tokens
-            if presence_penalty: params["presence_penalty"] = presence_penalty
-            if frequency_penalty: params["frequency_penalty"] = frequency_penalty
-            if logit_bias: params["logit_bias"] = json.loads(logit_bias)
-            if user: params["user"] = user
+            params = create_chat_params(model, messages, options)
 
             response = openai.ChatCompletion.create(**params)
-            click.echo(click.style("Assistant:", fg='yellow', bold=True))
 
-            assistant_response = ""
-            for chunk in response:
-                chunk_text = chunk["choices"][0].get("delta", {}).get("content", "")
-                if chunk_text:
-                    assistant_response += chunk_text
-                    click.echo(click.style(f"{chunk_text}", fg='yellow'), nl=False)
-
-            messages.append({"role": "assistant", "content": assistant_response.strip()})
-            click.echo("")  # Add a newline at the end
+            assistant_response = print_assistant_response(response)
+            messages.append({"role": "assistant", "content": assistant_response})
 
         except (KeyboardInterrupt, EOFError):
             click.echo("\nExiting the chat session.")
@@ -95,4 +124,5 @@ def start_chat(model, custom_message, temperature, top_p, n, stream, stop, max_t
 
 
 if __name__ == "__main__":
+    prepare_api_key()
     start_chat()
