@@ -5,6 +5,7 @@ ChatGPT for cli using gpt-3.5-turbo and gpt-4 in a clean and easy to use interfa
 `git clone https://github.com/reidchatham/chat-cli.git`
 
 ### 2. Install the dependencies:
+`pip install -r requirements.txt` or
 `pip install click openai sseclient`
 
 ### 3. Run the program:
