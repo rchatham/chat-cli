@@ -3,6 +3,7 @@ import openai
 import json
 import configparser
 import os
+from openai.error import AuthenticationError
 
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -60,7 +61,6 @@ def create_chat_params(model, messages, options):
     return params
 
 
-
 def print_assistant_response(response):
     click.echo(click.style("Assistant:", fg='yellow', bold=True))
 
@@ -73,6 +73,14 @@ def print_assistant_response(response):
 
     click.echo("")  # Add a newline at the end
     return assistant_response.strip()
+
+
+def update_api_key():
+    print("API key is invalid. Please enter a new OpenAI API key.")
+    OPENAI_API_KEY = input("API key: ").strip()
+    write_api_key(OPENAI_API_KEY)
+    openai.api_key = OPENAI_API_KEY
+
 
 
 @click.command()
@@ -114,7 +122,11 @@ def start_chat(model, system_message, temperature, top_p, n, stream, stop, max_t
 
             params = create_chat_params(model, messages, options)
 
-            response = openai.ChatCompletion.create(**params)
+            try:
+                response = openai.ChatCompletion.create(**params)
+            except AuthenticationError:
+                update_api_key()
+                continue
 
             assistant_response = print_assistant_response(response)
             messages.append({"role": "assistant", "content": assistant_response})
