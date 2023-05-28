@@ -5,7 +5,8 @@ import configparser
 import os
 
 
-config_file = 'config.ini'
+script_dir = os.path.dirname(os.path.realpath(__file__))
+config_file = os.path.join(script_dir, 'config.ini')
 
 
 def read_api_key():
