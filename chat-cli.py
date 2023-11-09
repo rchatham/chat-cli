@@ -3,7 +3,8 @@ import openai
 import json
 import configparser
 import os
-from openai.error import AuthenticationError
+import subprocess
+import sys
 
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -30,15 +31,20 @@ def write_api_key(api_key):
         config.write(f)
 
 
+def update_api_key():
+    print("API key is invalid. Please enter a new OpenAI API key.")
+    OPENAI_API_KEY = input("API key: ").strip()
+    write_api_key(OPENAI_API_KEY)
+    openai.api_key = OPENAI_API_KEY
+
+
 def prepare_api_key():
     api_key = read_api_key()
 
-    if not api_key:
-        print("API key not found. Please enter your OpenAI API key.")
-        api_key = input("API key: ").strip()
-        write_api_key(api_key)
-
-    openai.api_key = api_key
+    if api_key:
+        openai.api_key = api_key
+    else:
+        update_api_key()
 
 
 def get_user_input():
@@ -66,7 +72,9 @@ def print_assistant_response(response):
 
     assistant_response = ""
     for chunk in response:
-        chunk_text = chunk["choices"][0].get("delta", {}).get("content", "")
+        delta = chunk["choices"][0]["delta"]
+        if "content" in delta:
+            chunk_text = delta["content"]
         if chunk_text:
             assistant_response += chunk_text
             click.echo(click.style(f"{chunk_text}", fg='yellow'), nl=False)
@@ -75,30 +83,37 @@ def print_assistant_response(response):
     return assistant_response.strip()
 
 
-def update_api_key():
-    print("API key is invalid. Please enter a new OpenAI API key.")
-    OPENAI_API_KEY = input("API key: ").strip()
-    write_api_key(OPENAI_API_KEY)
-    openai.api_key = OPENAI_API_KEY
-
-
-
 @click.command()
 @click.option("--model", default="gpt-4", help="The model to use.")
-@click.option("--system_message", default="You are a cli chat bot using OpenAI's API.", help="A custom system message.")
-@click.option("--temperature", default=None, type=float, help="The sampling temperature.")
-@click.option("--top_p", default=None, type=float, help="The nucleus sampling value.")
-@click.option("--n", default=None, type=int, help="The number of chat completion choices.")
-@click.option("--stream", default=True, type=bool, help="Enable partial message deltas streaming.")
-@click.option("--stop", default=None, type=str, help="The stop sequence(s) for the API.")
-@click.option("--max_tokens", default=None, type=int, help="The maximum number of tokens to generate.")
-@click.option("--presence_penalty", default=None, type=float, help="The presence penalty.")
-@click.option("--frequency_penalty", default=None, type=float, help="The frequency penalty.")
-@click.option("--logit_bias", default=None, type=str, help="The logit bias as a JSON string.")
-@click.option("--user", default=None, type=str, help="A unique identifier for the end-user.")
-def start_chat(model, system_message, temperature, top_p, n, stream, stop, max_tokens, presence_penalty,
+@click.option("--system_message",
+              default="You are a cli chat bot using OpenAI's API.",
+              help="A custom system message.")
+@click.option("--temperature", default=None, type=float,
+              help="The sampling temperature.")
+@click.option("--top_p", default=None, type=float,
+              help="The nucleus sampling value.")
+@click.option("--n", default=None, type=int,
+              help="The number of chat completion choices.")
+@click.option("--stream", default=True, type=bool,
+              help="Enable partial message deltas streaming.")
+@click.option("--stop", default=None, type=str,
+              help="The stop sequence(s) for the API.")
+@click.option("--max_tokens", default=None, type=int,
+              help="The maximum number of tokens to generate.")
+@click.option("--presence_penalty", default=None, type=float,
+              help="The presence penalty.")
+@click.option("--frequency_penalty", default=None, type=float,
+              help="The frequency penalty.")
+@click.option("--logit_bias", default=None, type=str,
+              help="The logit bias as a JSON string.")
+@click.option("--user", default=None, type=str,
+              help="A unique identifier for the end-user.")
+def start_chat(model, system_message, temperature, top_p,
+               n, stream, stop, max_tokens, presence_penalty,
                frequency_penalty, logit_bias, user):
-    click.echo(click.style(f"System: {system_message}", fg='yellow', bold=True))
+    click.echo(click.style(f"System: {system_message}",
+                           fg='yellow',
+                           bold=True))
 
     messages = [{"role": "system", "content": system_message}]
 
@@ -124,18 +139,62 @@ def start_chat(model, system_message, temperature, top_p, n, stream, stop, max_t
 
             try:
                 response = openai.ChatCompletion.create(**params)
-            except AuthenticationError:
+            except openai.error.APIConnectionError as e:
+                click.echo("The server could not be reached")
+                click.echo(e.__cause__)  # an underlying Exception, likely raised within httpx.
+                messages.pop()
+                continue
+            except openai.error.RateLimitError as e:
+                click.echo("A 429 status code was received; we should back off a bit.")
+                messages.pop()
+                continue
+            except openai.error.APIStatusError as e:
+                click.echo("Another non-200-range status code was received")
+                click.echo(e.status_code)
+                click.echo(e.response)
+                messages.pop()
+                continue
+            except openai.error.AuthenticationError:
                 update_api_key()
+                messages.pop()
                 continue
 
             assistant_response = print_assistant_response(response)
-            messages.append({"role": "assistant", "content": assistant_response})
+            messages.append({
+                "role": "assistant",
+                "content": assistant_response
+                })
 
         except (KeyboardInterrupt, EOFError):
             click.echo("\nExiting the chat session.")
+            end_program()
             break
 
 
+def end_program():
+    if original_title:
+        change_terminal_window_name(original_title)
+    else:
+        reset_tmux_title()
+
+
+def change_terminal_window_name(title):
+    sys.stdout.write(f"\x1b]2;{title}\x07")
+    #os.system(title)
+    os.system(f'tmux rename-window {title}')
+
+
+def reset_tmux_title():
+    try:
+        subprocess.check_call(['tmux', 'setw', 'automatic-rename', 'on'])
+    except subprocess.CalledProcessError as e:
+        print('An error occurred while resetting tmux window title')
+        print(f"Command '{e.cmd}' returned non-zero exit status {e.returncode}")
+
+
 if __name__ == "__main__":
+    global original_title
+    original_title = os.popen('xdotool getactivewindow getwindowname').read().strip()
+    change_terminal_window_name("ChatGPT")
     prepare_api_key()
     start_chat()
