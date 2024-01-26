@@ -14,8 +14,7 @@ config_file = os.path.join(script_dir, 'config.ini')
 def read_api_key():
     config = configparser.ConfigParser()
     config.read(config_file)
-    try:
-        return config.get('openai', 'api_key')
+    try: return config.get('openai', 'api_key')
     except (configparser.NoSectionError, configparser.NoOptionError):
         return None
 
@@ -23,12 +22,10 @@ def read_api_key():
 def write_api_key(api_key):
     config = configparser.ConfigParser()
     config.read(config_file)
-    if not config.has_section('openai'):
-        config.add_section('openai')
+    if not config.has_section('openai'): config.add_section('openai')
     config.set('openai', 'api_key', api_key)
 
-    with open(config_file, 'w') as f:
-        config.write(f)
+    with open(config_file, 'w') as f: config.write(f)
 
 
 def update_api_key():
@@ -41,30 +38,18 @@ def update_api_key():
 def prepare_api_key():
     api_key = read_api_key()
 
-    if api_key:
-        openai.api_key = api_key
-    else:
-        update_api_key()
+    if api_key: openai.api_key = api_key
+    else: update_api_key()
 
 
 def get_user_input():
-    try:
-        return click.prompt(click.style("You", fg='green', bold=True))
+    try: return click.prompt(click.style("You", fg='green', bold=True))
     except click.exceptions.Abort:
         raise KeyboardInterrupt
 
 
 def create_chat_params(model, messages, options):
-    params = {
-        "model": model,
-        "messages": messages,
-    }
-
-    for key, value in options.items():
-        if value is not None:
-            params[key] = value
-
-    return params
+    return {**{"model": model, "messages": messages}, **{k: v for k, v in options.items() if v is not None}}
 
 
 def print_assistant_response(response):
@@ -75,7 +60,6 @@ def print_assistant_response(response):
         delta = chunk["choices"][0]["delta"]
         if "content" in delta:
             chunk_text = delta["content"]
-        if chunk_text:
             assistant_response += chunk_text
             click.echo(click.style(f"{chunk_text}", fg='yellow'), nl=False)
 
@@ -85,38 +69,21 @@ def print_assistant_response(response):
 
 @click.command()
 @click.option("--model", default="gpt-4", help="The model to use.")
-@click.option("--system_message",
-              default="You are a cli chat bot using OpenAI's API.",
-              help="A custom system message.")
-@click.option("--temperature", default=None, type=float,
-              help="The sampling temperature.")
-@click.option("--top_p", default=None, type=float,
-              help="The nucleus sampling value.")
-@click.option("--n", default=None, type=int,
-              help="The number of chat completion choices.")
-@click.option("--stream", default=True, type=bool,
-              help="Enable partial message deltas streaming.")
-@click.option("--stop", default=None, type=str,
-              help="The stop sequence(s) for the API.")
-@click.option("--max_tokens", default=None, type=int,
-              help="The maximum number of tokens to generate.")
-@click.option("--presence_penalty", default=None, type=float,
-              help="The presence penalty.")
-@click.option("--frequency_penalty", default=None, type=float,
-              help="The frequency penalty.")
-@click.option("--logit_bias", default=None, type=str,
-              help="The logit bias as a JSON string.")
-@click.option("--user", default=None, type=str,
-              help="A unique identifier for the end-user.")
-def start_chat(model, system_message, temperature, top_p,
-               n, stream, stop, max_tokens, presence_penalty,
-               frequency_penalty, logit_bias, user):
-    click.echo(click.style(f"System: {system_message}",
-                           fg='yellow',
-                           bold=True))
+@click.option("--system_message", default="You are a cli chat bot using OpenAI's API.", help="A custom system message.")
+@click.option("--temperature", default=None, type=float, help="The sampling temperature.")
+@click.option("--top_p", default=None, type=float, help="The nucleus sampling value.")
+@click.option("--n", default=None, type=int, help="The number of chat completion choices.")
+@click.option("--stream", default=True, type=bool, help="Enable partial message deltas streaming.")
+@click.option("--stop", default=None, type=str, help="The stop sequence(s) for the API.")
+@click.option("--max_tokens", default=None, type=int, help="The maximum number of tokens to generate.")
+@click.option("--presence_penalty", default=None, type=float, help="The presence penalty.")
+@click.option("--frequency_penalty", default=None, type=float, help="The frequency penalty.")
+@click.option("--logit_bias", default=None, type=str, help="The logit bias as a JSON string.")
+@click.option("--user", default=None, type=str, help="A unique identifier for the end-user.")
+def start_chat(model, system_message, temperature, top_p, n, stream, stop, max_tokens, presence_penalty, frequency_penalty, logit_bias, user):
 
+    click.echo(click.style(f"System: {system_message}", fg='yellow', bold=True))
     messages = [{"role": "system", "content": system_message}]
-
     options = {
         "temperature": temperature,
         "top_p": top_p,
@@ -137,8 +104,7 @@ def start_chat(model, system_message, temperature, top_p,
 
             params = create_chat_params(model, messages, options)
 
-            try:
-                response = openai.ChatCompletion.create(**params)
+            try: response = openai.ChatCompletion.create(**params)
             except openai.error.APIConnectionError as e:
                 click.echo("The server could not be reached")
                 click.echo(e.__cause__)  # an underlying Exception, likely raised within httpx.
@@ -172,10 +138,8 @@ def start_chat(model, system_message, temperature, top_p,
 
 
 def end_program():
-    if original_title:
-        change_terminal_window_name(original_title)
-    else:
-        reset_tmux_title()
+    if original_title: change_terminal_window_name(original_title)
+    else: reset_tmux_title()
 
 
 def change_terminal_window_name(title):
@@ -185,8 +149,7 @@ def change_terminal_window_name(title):
 
 
 def reset_tmux_title():
-    try:
-        subprocess.check_call(['tmux', 'setw', 'automatic-rename', 'on'])
+    try: subprocess.check_call(['tmux', 'setw', 'automatic-rename', 'on'])
     except subprocess.CalledProcessError as e:
         print('An error occurred while resetting tmux window title')
         print(f"Command '{e.cmd}' returned non-zero exit status {e.returncode}")
